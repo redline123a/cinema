@@ -3,20 +3,22 @@ import { InjectModel } from 'nestjs-typegoose';
 import { GenreModel } from './genre.model';
 import { NotFoundException, Injectable } from '@nestjs/common';
 import { CreateGenreDto } from './dto/createGenre.dto';
+import { MovieService } from 'src/movie/movie.service';
+import { ICollection } from './genre.interface';
 
 @Injectable()
 export class GenreService {
 
     constructor(
-        @InjectModel(GenreModel) private readonly GenreModel: ModelType<GenreModel>
+        @InjectModel(GenreModel) private readonly GenreModel: ModelType<GenreModel>,
+        private readonly movieService: MovieService
     ){}
 
     async bySlug(slug: string){
-        const genre = await this.GenreModel.findOne({slug}).exec()
+        const doc = await this.GenreModel.findOne({slug}).exec()
+        if(!doc) throw new NotFoundException('Genre not found')
 
-        if(!genre) throw new NotFoundException('Genre not found')
-
-        return genre
+        return doc
     }
 
     async getAll(searchTerm?: string){
@@ -48,8 +50,20 @@ export class GenreService {
 
     async getCollections() {
         const genres = await this.getAll()
-        const collection= genres
-        return collection
+        const collections = await Promise.all(genres.map(async genre => {
+            const movieByGenre = await this.movieService.byGenres([genre._id])
+
+            const result:ICollection = {
+                _id: String(genre._id),
+                image: movieByGenre[0].bigPoster,
+                slug: genre.slug,
+                title: genre.name
+            }
+
+            return result
+        }))
+
+        return collections
     }
 
     async byId(_id: string){
