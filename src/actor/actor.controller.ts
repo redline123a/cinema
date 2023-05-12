@@ -3,7 +3,7 @@ import { UsePipes } from '@nestjs/common/decorators/core/use-pipes.decorator';
 import { HttpCode } from '@nestjs/common/decorators/http/http-code.decorator';
 import { Delete, Get, Post, Put } from '@nestjs/common/decorators/http/request-mapping.decorator';
 import { Body, Param, Query } from '@nestjs/common/decorators/http/route-params.decorator';
-import { Auth } from 'src/auth/decorators/auth.decorator';
+import { Auth } from 'src/auth/decorators/Auth.decorator';
 import { IdValidationPipe } from 'src/pipes/id.validation.pipe';
 import { ActorDto } from './actor.dto';
 import { ActorService } from './actor.service';
