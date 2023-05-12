@@ -18,6 +18,7 @@ import { MovieService } from './movie.service'
 			},
 		]),
 		TelegramModule,
+		UserModule,
 	],
 	providers: [MovieService],
 	exports: [MovieService],

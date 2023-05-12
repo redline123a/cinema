@@ -1,88 +1,97 @@
-import { ModelType } from '@typegoose/typegoose/lib/types';
-import { InjectModel } from 'nestjs-typegoose';
-import { UserModel } from './user.model';
-import { NotFoundException, Injectable } from '@nestjs/common';
-import { UpdateUserDto } from './dto/updateUser.dto';
-import { genSalt, hash } from 'bcryptjs';
-import { Types } from 'mongoose';
+import { Injectable, NotFoundException } from '@nestjs/common'
+import { ModelType, DocumentType } from '@typegoose/typegoose/lib/types'
+import { genSalt, hash } from 'bcryptjs'
+import { Types } from 'mongoose'
+import { InjectModel } from 'nestjs-typegoose'
+import { UpdateDto } from './dto/update.dto'
+import { UserModel } from './user.model'
 
 @Injectable()
 export class UserService {
+	constructor(
+		@InjectModel(UserModel) private readonly userModel: ModelType<UserModel>
+	) {}
 
-    constructor(
-        @InjectModel(UserModel) private readonly UserModel: ModelType<UserModel>
-    ){}
+	async byId(id: string): Promise<DocumentType<UserModel>> {
+		const user = await this.userModel.findById(id).exec()
 
-    async byId(_id: string){
-        const user = await this.UserModel.findById(_id)
+		if (user) return user
+		throw new NotFoundException('User not found')
+	}
 
-        if(!user) throw new NotFoundException('User not found')
+	async updateProfile(_id: string, data: UpdateDto) {
+		const user = await this.userModel.findById(_id)
+		const isSameUser = await this.userModel.findOne({ email: data.email })
 
-        return user
-    }
+		if (isSameUser && String(_id) !== String(isSameUser._id)) {
+			throw new NotFoundException('Email busy')
+		}
 
-    async updateProfile(_id: string, dto: UpdateUserDto){
-        const user = await this.byId(_id)
-        const isSameUser = await this.UserModel.findOne({email: dto.email})
+		if (user) {
+			if (data.password) {
+				const salt = await genSalt(10)
+				user.password = await hash(data.password, salt)
+			}
+			user.email = data.email
+			if (data.isAdmin || data.isAdmin === false) user.isAdmin = data.isAdmin
 
-        if(isSameUser && String(_id) !== String(isSameUser._id)) throw new NotFoundException('Email is busy')
-    
-        if(dto.password){
-            const salt = await genSalt(10)
-            user.password = await hash(dto.password, salt)
-        }
+			await user.save()
+			return
+		}
 
-        user.email = dto.email
+		throw new NotFoundException('User not found')
+	}
 
-        if(dto.isAdmin || dto.isAdmin === false)
-            user.isAdmin = dto.isAdmin
+	async getFavoriteMovies(_id: string) {
+		return this.userModel
+			.findById(_id, 'favorites')
+			.populate({
+				path: 'favorites',
+				populate: {
+					path: 'genres',
+				},
+			})
+			.exec()
+			.then((data) => {
+				return data.favorites
+			})
+	}
 
-        await user.save()
-        return
-    }
+	async toggleFavorite(movieId: Types.ObjectId, user: UserModel) {
+		const { favorites, _id } = user
 
-    async getCount(){
-        return this.UserModel.find().count().exec()
-    }
+		await this.userModel.findByIdAndUpdate(_id, {
+			favorites: favorites.includes(movieId)
+				? favorites.filter((id) => String(id) !== String(movieId))
+				: [...favorites, movieId],
+		})
+	}
 
-    async getAll(searchTerm?: string){
-        let options = {}
+	async getCount() {
+		return this.userModel.find().count().exec()
+	}
 
-        if(searchTerm){
-            options = {
-                $or: [
-                    {
-                        email: new RegExp(searchTerm, 'i')
-                    }
-                ]
-            }
-        }
+	async getAll(searchTerm?: string): Promise<DocumentType<UserModel>[]> {
+		let options = {}
 
-        return this.UserModel.find(options).select('-password -updatedAt -__v').sort({
-            createdAt: 'desc'
-        }).exec()
-    }
-    
-    async delete(id: string){
-        return this.UserModel.findByIdAndDelete(id).exec()
-    }
+		if (searchTerm) {
+			options = {
+				$or: [
+					{
+						email: new RegExp(searchTerm, 'i'),
+					},
+				],
+			}
+		}
 
-    async toggleFavorite(movieId: Types.ObjectId, user: UserModel){
-        const {_id, favorites} = user
+		return this.userModel
+			.find(options)
+			.select('-password -updatedAt -__v')
+			.sort({ createdAt: 'desc' })
+			.exec()
+	}
 
-        await this.UserModel.findByIdAndUpdate(_id, {
-            favorites: favorites.includes(movieId) ? favorites.filter(id => String(id) !== String(movieId)) : [...favorites, movieId]
-        })
-    }
-
-    async getFavoriteMovies(_id: Types.ObjectId){
-        return await this.UserModel.findById(_id, 'favorite')
-        .populate({
-            path:'favorites', 
-            populate: {
-                path: 'genres'
-            }
-        })
-        .exec().then(data => data.favorites)
-    }
+	async delete(id: string): Promise<DocumentType<UserModel> | null> {
+		return this.userModel.findByIdAndDelete(id).exec()
+	}
 }
